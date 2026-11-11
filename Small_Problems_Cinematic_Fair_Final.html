@@ -1,0 +1,240 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Small Problems — The Unstable Serum</title><style>*{box-sizing:border-box}html,body{margin:0;width:100%;height:100%;overflow:hidden;background:#18223b;font-family:'Trebuchet MS',Arial,sans-serif}canvas{width:100vw;height:100vh;display:block}#ui{position:fixed;inset:0;pointer-events:none;color:#fff}#hud{position:absolute;top:16px;left:16px;right:16px;display:none;align-items:flex-start;justify-content:space-between;gap:10px;font-weight:900;text-shadow:0 2px 5px #40314a}#hud span{background:#242c4ccf;border:2px solid #ffffff70;border-radius:15px;padding:10px 14px;box-shadow:0 5px 12px #16152c44}#banner{position:absolute;top:85px;left:50%;transform:translateX(-50%);font-size:clamp(16px,3vw,29px);font-weight:900;text-align:center;text-shadow:0 3px 9px #3d274d;opacity:0;transition:opacity .2s;max-width:85vw}#bottom{position:absolute;bottom:14px;left:50%;transform:translateX(-50%);background:#202945bb;padding:9px 17px;border-radius:15px;font-size:13px;font-weight:bold;display:none;text-align:center}#overlay{pointer-events:auto;position:absolute;inset:0;background:#1d2445bd;display:flex;align-items:center;justify-content:center;padding:18px}#panel{width:min(610px,95vw);background:#fff6e9;color:#443858;border:7px solid #ffe3b2;border-radius:30px;box-shadow:0 14px 0 #483858,0 25px 70px #0a1325aa;padding:28px;text-align:center}h1{font-size:clamp(35px,6vw,61px);line-height:.99;color:#e77c98;text-shadow:3px 4px #fbd0ba;margin:8px 0 15px}p{line-height:1.5}button{cursor:pointer;border:0;border-radius:22px;background:#e8779c;color:white;font-weight:900;font-size:20px;padding:14px 35px;box-shadow:0 6px #ac5277}button:hover{filter:brightness(1.08)}.pill{display:inline-block;background:#eee0cf;border-radius:8px;padding:3px 8px;font-weight:bold}#touch{display:none;position:absolute;bottom:65px;left:15px;right:15px;justify-content:space-between;pointer-events:auto}.touchbtn{touch-action:none;background:#ffffffba;color:#483858;border:2px solid white;border-radius:15px;font-weight:900;padding:15px}@media(pointer:coarse){#touch{display:flex}}@media(max-width:650px){#hud{font-size:12px;flex-wrap:wrap}#hud span{padding:7px 9px}#panel{padding:17px}}</style></head><body><canvas id="game"></canvas><div id="ui"><div id="hud"><span id="timer">⏳ 4:30</span><span id="room">🛏 Bedroom</span><span id="form">✨ NORMAL</span><span id="progress">Antidote 0%</span></div><div id="banner"></div><div id="bottom">A / D MOVE · SPACE JUMP · S / ↓ DUCK HUGE · SPACE JUMP OVER VASES · HIDE TINY UNDER PADS · Jump over bugs and dog paws · Duck under lamps · R RESTART</div><div id="touch"><div><button class="touchbtn" data-key="ArrowLeft">◀</button> <button class="touchbtn" data-key="ArrowRight">▶</button></div><button class="touchbtn" data-key="Space">JUMP ↑</button></div><div id="overlay"><div id="panel"><div style="font-size:36px">🧪 🐞 🐕 🌷</div><h1 id="heading">SMALL<br>PROBLEMS</h1><p id="desc">Your shrinking experiment has gone haywire. The antidote is waiting in the kitchen lab, across the entire house.<br><br><b>You cannot choose your size.</b> The unstable serum transforms you unexpectedly!<br><b>🐜 TINY:</b> the camera dives into a dangerous world of bugs and dog paws.<br><b>🚶 NORMAL:</b> run, jump and navigate furniture.<br><b>🦖 HUGE:</b> the camera pulls back; avoid smashing delicate household objects or lose time.<br><br><span class="pill">A / D</span> move &nbsp; <span class="pill">SPACE</span> jump &nbsp; <span class="pill">R</span> restart<br><small>Find the glowing antidote before time runs out. The serum can change you mid-adventure. Every size has different dangers!</small></p><button id="start">START ADVENTURE</button></div></div></div><script>(()=>{'use strict';const canvas=document.getElementById('game'),ctx=canvas.getContext('2d'),overlay=document.getElementById('overlay'),hud=document.getElementById('hud'),banner=document.getElementById('banner'),bottom=document.getElementById('bottom'),timer=document.getElementById('timer'),roomLabel=document.getElementById('room'),formLabel=document.getElementById('form'),progress=document.getElementById('progress'),heading=document.getElementById('heading'),desc=document.getElementById('desc'),start=document.getElementById('start');const WORLD=8960,G=550,ROOMS=[{name:'BEDROOM',emoji:'🛏',start:0,end:1800,bg:'#f7dce6',wall:'#fff0e8'},{name:'HALLWAY',emoji:'🖼',start:1800,end:3500,bg:'#e4dafa',wall:'#f5eafe'},{name:'LIVING ROOM',emoji:'🐕',start:3500,end:5700,bg:'#d8f2e7',wall:'#ecfcf1'},{name:'KITCHEN LAB',emoji:'🧪',start:5700,end:WORLD,bg:'#fce9c8',wall:'#fff6e5'}];let W=innerWidth,H=innerHeight,dpr=1,playing=false,ended=false,keys={},p,camX=0,zoom=1,zoomTarget=1,last=0,time=270,runDistance=0,shiftAt=0,shiftCount=0,events=[],particles=[],flash=0,noticeTime=0,inv=0,checkpoint=80,broken=new Set(),stunned=0;const rand=(a,b)=>a+Math.random()*(b-a),clamp=(n,a,b)=>Math.max(a,Math.min(b,n));function resize(){W=innerWidth;H=innerHeight;dpr=Math.min(devicePixelRatio||1,2);canvas.width=Math.round(W*dpr);canvas.height=Math.round(H*dpr);ctx.setTransform(dpr,0,0,dpr,0,0)}addEventListener('resize',resize);resize();const sizes={tiny:{w:15,h:23,speed:245,jump:350,zoom:1.58,label:'🐜 TINY WORLD'},normal:{w:30,h:56,speed:285,jump:470,zoom:1.04,label:'🚶 NORMAL WORLD'},huge:{w:112,h:244,speed:225,jump:535,zoom:.48,label:'🦖 GIANT WORLD'}};const platforms=[];for(let i=0;i<17;i++){let x=220+i*435;platforms.push({x,y:G-(i%3===0?135:i%3===1?185:112),w:155+(i%2)*35,h:20})}const bugs=[];for(let x=270;x<WORLD-400;x+=340)bugs.push({x,base:x,phase:rand(0,7),range:65+rand(0,40)});const fragiles=[];for(let x=470;x<WORLD-300;x+=510)fragiles.push({x,type:Math.floor(x/510)%3});const props=[];for(let x=160;x<WORLD;x+=235)props.push({x,type:Math.floor(x/235)%5});function say(s,t=2.4){banner.textContent=s;noticeTime=t;banner.style.opacity=1}function burst(x,y,color,count=15){for(let i=0;i<count;i++)particles.push({x,y,vx:rand(-155,155),vy:rand(-240,30),life:rand(.35,.9),color,r:rand(2,6)})}function reset(){p={x:80,y:G-56,vx:0,vy:0,size:'normal',onGround:false,face:1};camX=0;zoom=1;zoomTarget=1;time=270;runDistance=0;shiftAt=rand(210,390);shiftCount=0;flash=0;inv=0;checkpoint=80;stunned=0;broken.clear();particles=[];events=[];playing=true;ended=false;overlay.style.display='none';hud.style.display='flex';bottom.style.display='block';say('THE SERUM IS UNSTABLE — EXPECT THE UNEXPECTED!',3)}function shift(){const options=['tiny','normal','huge'].filter(s=>s!==p.size);let next=options[Math.floor(Math.random()*options.length)];const old=sizes[p.size],nw=sizes[next];p.y+=old.h-nw.h;p.y=Math.min(p.y,G-nw.h);p.size=next;zoomTarget=nw.zoom;flash=.8;inv=Math.max(inv,.8);shiftCount++;burst(p.x,p.y+nw.h/2,next==='tiny'?'#a2f4d5':next==='huge'?'#ffc9a4':'#e7c7ff',32);say(next==='tiny'?'⚡ SHRINK! BUGS AND PAWS ARE NOW DEADLY!':next==='huge'?'⚡ GROWTH SURGE! WATCH WHAT YOU BREAK!':'⚡ BACK TO NORMAL! USE THE HIGHER ROUTE!',3.1);shiftAt=runDistance+rand(390,700)}function damage(sec,label){if(inv>0)return;time=Math.max(0,time-sec);inv=1.5;flash=.35;burst(p.x,p.y+sizes[p.size].h/2,'#ff7e9e',12);say(label+' −'+sec+' SECONDS!',2);p.vy=-250}function win(success){playing=false;ended=true;overlay.style.display='flex';heading.innerHTML=success?'ANTIDOTE<br>RECOVERED!':'PERMANENTLY<br>SHRUNK!';desc.innerHTML=success?`You made it through all four rooms and stabilized the serum!<br><br><b>Time remaining: ${Math.ceil(time)} seconds</b><br>Unexpected transformations survived: ${shiftCount}<br>Hazards hit: ${penalties} · Things broken: ${broken.size}<br><br>You're back to normal!`:'The serum became permanent before you could reach the kitchen lab.<br><br>Try again! Every run brings a different sequence of transformations.';start.textContent='PLAY AGAIN';hud.style.display='none';bottom.style.display='none'}start.addEventListener('click',reset);addEventListener('keydown',e=>{if(['Space','ArrowUp','ArrowDown','ArrowLeft','ArrowRight'].includes(e.code))e.preventDefault();keys[e.code]=true;if(e.code==='KeyR'&&playing)reset()});addEventListener('keyup',e=>{keys[e.code]=false});document.querySelectorAll('.touchbtn').forEach(b=>{const k=b.dataset.key;b.addEventListener('pointerdown',e=>{e.preventDefault();keys[k]=true;b.setPointerCapture(e.pointerId)});b.addEventListener('pointerup',()=>keys[k]=false);b.addEventListener('pointercancel',()=>keys[k]=false)});function roomAt(x){return ROOMS.find(r=>x<r.end)||ROOMS[3]}const SECTIONS=8, LEN=1000, END=SECTIONS*LEN;
+const labels=['BEDROOM · TOY CORNER','BEDROOM · DESK','HALLWAY · SHOES','HALLWAY · DOG ZONE','LIVING ROOM · COUCH','LIVING ROOM · SHELVES','KITCHEN · CABINETS','KITCHEN · LAB'];
+const palettes=['#f7dce6','#f7dce6','#e4dafa','#e4dafa','#d8f2e7','#d8f2e7','#fce9c8','#fce9c8'];
+let sectionLayouts=new Map(), cameraY=0, shiftVisual=0, dogWarning=0, nextDogX=0;let cinematic=null, surgeQueued=false, lastSurgeX=0;let nextSurge=0, dogPass=null, dogWait=12, dogCooldown=0, surgeGrace=0, ducking=false, section=0, localX=60, targetX=60, sectionSize='normal', sectionHazards=[], sectionPlatforms=[], routeFloor=G, routeTop=0, cooldown=0, trans=0, oldSize='normal', lastJump=false, runStart=0, penalties=0;
+function generateSection(){
+ const cacheKey=section+'-'+sectionSize; if(sectionLayouts.has(cacheKey)){const v=sectionLayouts.get(cacheKey);sectionHazards=v.hazards;sectionPlatforms=v.platforms;routeFloor=v.floor;routeTop=v.top;return;}
+ sectionHazards=[];sectionPlatforms=[];routeFloor=G;routeTop=0;
+ const type=sectionSize;
+ if(type==='tiny'){
+   routeFloor=G;routeTop=G-94;
+   // Floor-level tunnel with ceiling: bugs, spiders, and paws, plus raised safety pads
+   for(let i=0;i<4;i++){
+    let x=230+i*210;
+    sectionHazards.push({x,type:(section===3||section===4)?'paw':i%2?'spider':'ant',w:32});
+    sectionPlatforms.push({x:x-100,y:G-65,w:125,h:14});
+   }
+ }else if(type==='normal'){
+   // Real platforming: gaps have solid collision, so the player must jump between raised platforms
+   for(let i=0;i<5;i++){
+    const x=90+i*210;
+    sectionPlatforms.push({x,y:G-78-(i%2)*48,w:155,h:18});
+   }
+   for(let i=0;i<4;i++)sectionHazards.push({x:300+i*210,type:'gap',w:68});
+ }else{
+   // Giant route: ceiling beams and fragile objects with duck / careful movement
+   for(let i=0;i<4;i++){
+    sectionHazards.push({x:245+i*220,type:i%2===0?'lamp':'fragile',w:56});
+   }
+   routeTop=G-210;
+ }
+ sectionLayouts.set(cacheKey,{hazards:sectionHazards,platforms:sectionPlatforms,floor:routeFloor,top:routeTop});
+}
+function hazardClearAt(candidate,form){
+ const lx=candidate-section*LEN;
+ if(lx<75||lx>LEN-75)return false;
+ for(const h of sectionHazards){
+  if(Math.abs(lx-h.x)<(form==='huge'?100:form==='tiny'?85:65))return false;
+ }
+ if(dogPass&&form==='tiny'&&Math.abs(candidate-dogPass.x)<190)return false;
+ return true;
+}
+function safeLanding(form){
+ // All transformations land on a clear stretch, never inside an active hazard.
+ for(const distance of [0,-95,95,-155,155,-215,215,-275,275,-335,335]){
+  const candidate=section*LEN+clamp(localX+distance,78,LEN-80);
+  if(hazardClearAt(candidate,form))return candidate;
+ }
+ return null;
+}
+// Cinematic serum surge: queued until the character is safely grounded.
+function canSurge(next){
+ // Surges can happen on any broad grounded stretch, not just rare hazard-free pixels.
+ // Never interrupt a jump, hide, dog encounter, or narrow elevated platform.
+ if(!p.onGround||Math.abs(p.vy)>1||ducking||localX<80||localX>LEN-75)return false;
+ if(dogPass&&Math.abs(dogPass.x-p.x)<235)return false;
+ if(p.y+sizes[p.size].h<G-8)return false;
+ return true;
+}
+function startSurge(next){
+ cinematic={phase:'warning',elapsed:0,next};
+ say('⚠ SERUM INSTABILITY!',1.5);
+}
+function advanceCinematic(dt){
+ const c=cinematic;if(!c)return false;
+ c.elapsed+=dt;
+ // The world, hazards, countdown, and controls pause during the cinematic.
+ if(c.phase==='warning'&&c.elapsed>=.6){c.phase='change';c.elapsed=0;flash=.48;}
+ else if(c.phase==='change'&&c.elapsed>=.8){
+   setForm(c.next);c.phase='adjust';c.elapsed=0;
+   inv=Math.max(inv,1.5);surgeGrace=Math.max(surgeGrace,1.5);
+ }
+ else if(c.phase==='adjust'&&c.elapsed>=1.5){cinematic=null;}
+ if(c.phase==='change'){
+   // Start the camera transition before control returns.
+   const target=sizes[c.next].zoom;
+   zoom+=(target-zoom)*(1-Math.exp(-dt*3.5));camX+=(p.x-W/zoom*.37-camX)*(1-Math.exp(-dt*3.5));
+ }
+ return true;
+}
+function setForm(next){
+ if(next===p.size)return;
+ const before=sizes[p.size],after=sizes[next],feet=p.y+before.h;
+ p.size=next;sectionSize=next;p.y=Math.min(G-after.h,feet-after.h);
+ // Regenerate the relevant route, then find a safe landing point.
+ generateSection();
+ // Preserve the player's position; the protection window allows a fair reaction.
+ const landing=safeLanding(next);
+ // Keep position unchanged; invulnerability prevents unfair immediate collisions.
+ if(landing===null){inv=Math.max(inv,4.0);}
+ // Give the player enough time to see the new form and respond.
+ surgeGrace=3.6;inv=Math.max(inv,3.6);shiftVisual=1;
+ p.vy=0;p.onGround=true;zoomTarget=after.zoom;trans=.85;flash=.55;shiftCount++;
+ burst(p.x,p.y+after.h/2,next==='tiny'?'#9ef5d1':next==='huge'?'#ffdb9f':'#c9c4ff',35);
+ say(next==='tiny'?'⚡ TINY! FIND COVER — BUGS AND DOG PAWS!':next==='normal'?'⚡ NORMAL! JUMP THE FURNITURE!':'⚡ HUGE! JUMP OVER VASES · HOLD S UNDER LIGHTS!',2.8);
+}
+function chooseSection(next){
+ section=next;localX=next===0?55:30;p.x=section*LEN+localX;
+ // Continuous movement: never change size just because a section boundary was crossed.
+ sectionSize=p.size;generateSection();checkpoint=p.x;
+}
+function reset(){
+ p={x:55,y:G-56,vx:0,vy:0,size:'normal',onGround:true,face:1};time=270;sectionLayouts.clear();cameraY=0;shiftVisual=0;dogWarning=0;section=0;sectionSize='normal';localX=55;camX=0;zoom=1;flash=0;inv=0;shiftCount=0;penalties=0;broken.clear();particles=[];playing=true;ended=false;ducking=false;dogPass=null;dogWait=10;dogCooldown=0;surgeGrace=0;cinematic=null;surgeQueued=false;lastSurgeX=0;nextSurge=rand(310,440);overlay.style.display='none';hud.style.display='flex';bottom.style.display='block';chooseSection(0);say('THE SERUM COULD CHANGE YOU ANYWHERE!',2.8);
+}
+function update(dt){
+ if(!playing)return;dt=Math.min(dt,.035);if(advanceCinematic(dt)){noticeTime=Math.max(noticeTime,dt+.1);return;}time-=dt;
+ if(time<=0){time=0;win(false);return}
+ noticeTime-=dt;if(noticeTime<=0)banner.style.opacity=0;
+ inv=Math.max(0,inv-dt);surgeGrace=Math.max(0,surgeGrace-dt);flash=Math.max(0,flash-dt);trans=Math.max(0,trans-dt);cooldown=Math.max(0,cooldown-dt);
+ const s=sizes[p.size];let dir=Number(!!(keys.KeyD||keys.ArrowRight))-Number(!!(keys.KeyA||keys.ArrowLeft));if(dir)p.face=dir;
+ const duck=!!(keys.KeyS||keys.ArrowDown);ducking=p.size==='huge'&&duck;const hiding=p.size==='tiny'&&duck&&sectionPlatforms.some(a=>Math.abs(localX-(a.x+a.w/2))<a.w/2+12); const effectiveH=ducking?s.h*.52:s.h;const speed=s.speed*(ducking?.62:1);
+ const previousX=localX,prevBottom=p.y+s.h;
+ localX=clamp(localX+dir*speed*dt,20,LEN-18);p.x=section*LEN+localX;
+ const jumping=!!(keys.Space||keys.KeyW||keys.ArrowUp);
+ if(jumping&&!lastJump&&p.onGround&&!ducking){p.vy=-s.jump;p.onGround=false;burst(p.x,G-4,'#ffffff',7)}lastJump=jumping;
+ p.vy+=1100*dt;p.y+=p.vy*dt;p.onGround=false;
+ let ground=G;
+ if(p.size==='normal'||p.size==='tiny'){
+  // Tiny pads and normal furniture platforms have actual landing collision
+  for(const a of sectionPlatforms){if(p.vy>=0&&prevBottom<=a.y+9&&p.y+s.h>=a.y&&localX+s.w/2>a.x&&localX-s.w/2<a.x+a.w){ground=Math.min(ground,a.y)}}
+ }
+ if(p.y+s.h>=ground){p.y=ground-s.h;p.vy=0;p.onGround=true}
+ // Tiny characters can jump onto safety pads; do not clamp them to a false ceiling.
+ for(let i=0;i<sectionHazards.length;i++){
+  const h=sectionHazards[i],dist=Math.abs(localX-h.x);
+  if(h.type==='gap'){
+   if(dist<h.w*.48&&p.y+s.h>G-18&&inv<=0){damage(7,'MISSED THE PLATFORM');localX=Math.max(30,h.x-100);p.y=G-s.h;p.vy=0;inv=1.3;penalties++}
+  }else if(h.type==='lamp'){
+   if(dist<46&&!ducking&&p.y<G-110&&inv<=0){damage(10,'HIT A CEILING LIGHT');penalties++;inv=1.5}
+  }else if(h.type==='fragile'){
+   if(dist<34&&!ducking&&p.y+s.h>G-72&&!broken.has(section+'-'+i)&&inv<=0){broken.add(section+'-'+i);damage(12,'BROKE A FRAGILE OBJECT');penalties++}
+  }else{
+   const moving=h.type==='paw'?Math.sin(performance.now()*.005+i)*32:Math.sin(performance.now()*.003+i)*18;
+   if(Math.abs(localX-(h.x+moving))<20&&p.y+s.h>G-30&&!hiding&&inv<=0){damage(h.type==='paw'?10:7,h.type==='paw'?'DOG PAW':'BUG ATTACK');penalties++;inv=1.3}
+  }
+ }
+ if(localX>=LEN-24){if(section===SECTIONS-1){win(true);return}chooseSection(section+1);p.y=Math.min(p.y,G-s.h);p.vy=0;p.onGround=true}
+ // Distance-based serum instability with jitter: not fixed-time or room-triggered.
+ if(p.x>=nextSurge)surgeQueued=true;
+ if(surgeQueued && surgeGrace<=0 && !cinematic){
+  const options=['tiny','normal','huge'].filter(v=>v!==p.size);
+  const eligible=options.filter(canSurge);
+  if(eligible.length){
+   surgeQueued=false;startSurge(eligible[Math.floor(Math.random()*eligible.length)]);
+   lastSurgeX=p.x;nextSurge=p.x+rand(690,970);
+  }
+ }
+ // Dog crosses the actual house occasionally; it is dangerous only at tiny scale.
+ dogWait-=dt;dogCooldown=Math.max(0,dogCooldown-dt);dogWarning=Math.max(0,dogWarning-dt);
+ if(!dogPass && dogWait<=0 && section>0 && section<7){
+   dogPass={x:p.x+rand(700,850),direction:-1,life:7};dogWarning=2.1;dogWait=rand(16,24);
+   say('🐕 DOG APPROACHING! '+(p.size==='tiny'?'HOLD S UNDER A PAD, OR JUMP ON TOP!' :'WATCH THE DOG PASS!'),3.2);
+ }
+ if(dogPass){dogPass.x+=dogPass.direction*265*dt;dogPass.life-=dt;
+  if(dogWarning<=0&&Math.abs(dogPass.x-p.x)<43&&inv<=0&&dogCooldown<=0){if(p.size==='tiny'&&!hiding&&p.y+s.h>G-37){damage(9,'DOG PAW');penalties++;dogCooldown=2.1}else if(p.size==='huge'&&!ducking&&p.onGround&&p.y+s.h>G-8){damage(10,'STEPPED ON THE DOG');penalties++;dogCooldown=2.1}}
+  if(dogPass.life<=0||dogPass.x<p.x-800)dogPass=null;
+ }
+ zoom+=((sizes[p.size].zoom)-zoom)*(1-Math.exp(-dt*2.7));shiftVisual=Math.max(0,shiftVisual-dt);
+ const viewW=W/zoom;
+ camX+=(p.x-viewW*.37-camX)*(1-Math.exp(-dt*3.6));
+ camX=clamp(camX,0,SECTIONS*LEN-Math.min(viewW,SECTIONS*LEN));
+ for(const q of particles){q.x+=q.vx*dt;q.y+=q.vy*dt;q.vy+=550*dt;q.life-=dt}particles=particles.filter(q=>q.life>0);
+ timer.textContent='⏳ '+Math.floor(time/60)+':'+String(Math.floor(time%60)).padStart(2,'0');
+ roomLabel.textContent=['🛏 BEDROOM','🖼 HALLWAY','🐕 LIVING ROOM','🧪 KITCHEN LAB'][Math.floor(section/2)];
+ formLabel.textContent=s.label+(ducking?' · DUCKING':hiding?' · HIDING':'')+(surgeGrace>0?' · SAFE':'');progress.textContent='🧪 '+Math.floor(100*(section+localX/LEN)/SECTIONS)+'%';
+}
+function round(x,y,w,h,r,color){ctx.fillStyle=color;ctx.beginPath();ctx.roundRect(x,y,w,h,r);ctx.fill()}function ellipse(x,y,rx,ry,color){ctx.fillStyle=color;ctx.beginPath();ctx.ellipse(x,y,rx,ry,0,0,Math.PI*2);ctx.fill()}function line(x1,y1,x2,y2,color,w=2){ctx.strokeStyle=color;ctx.lineWidth=w;ctx.beginPath();ctx.moveTo(x1,y1);ctx.lineTo(x2,y2);ctx.stroke()}function drawRoom(r){const x=r.start;round(x,-450,r.end-r.start,1050,0,r.wall);round(x,0,r.end-r.start,110,0,r.bg);for(let k=x+90;k<r.end;k+=330){round(k,80,190,170,18,'#fffaf0');round(k+8,88,174,154,12,'#a4d6df');line(k+95,88,k+95,242,'#fffaf0',9);line(k+8,164,k+182,164,'#fffaf0',8);ellipse(k+65,237,60,18,'#91bcb6aa');ellipse(k+130,217,45,13,'#fff8f7aa')}round(x,530,r.end-r.start,105,0,r.bg);round(x,550,r.end-r.start,60,0,'#b18a7b');for(let k=x;k<r.end;k+=72)line(k,553,k+22,603,'#a27b6f44',2);round(x,522,r.end-r.start,12,0,'#ffffff99');if(r.name==='BEDROOM'){round(620,380,320,150,20,'#aeb7f0');round(610,360,340,36,17,'#f5c2cf');round(640,350,110,22,11,'#fffdf2');round(920,265,22,260,7,'#b8a4a1');round(900,240,75,25,8,'#e7a8ae');round(1220,320,220,200,14,'#c9a4df');for(let j=0;j<3;j++)round(1235,355+j*48,190,37,8,'#fff0e9')}if(r.name==='HALLWAY'){for(let j=0;j<4;j++){round(1970+j*330,170,170,180,13,'#bfa3dc');round(1982+j*330,182,146,156,8,'#f9e6e5');ellipse(2055+j*330,260,44,52,['#f6baaf','#a7cbd7','#c7b1e9'][j%3])}round(2870,300,140,220,10,'#a9b8d7')}if(r.name==='LIVING ROOM'){round(3900,390,430,130,28,'#a2c7b8');round(3920,340,390,100,35,'#a7d2bd');round(3910,450,70,80,14,'#88b9a9');round(4260,450,70,80,14,'#88b9a9');round(4960,300,180,225,12,'#b79ac6');for(let j=0;j<4;j++)round(4972,330+j*43,150,25,4,'#f5e5c6')}if(r.name==='KITCHEN LAB'){for(let j=0;j<5;j++)round(5850+j*330,330,220,195,10,j%2?'#d3a8a5':'#c7b5a0');round(5840,315,1870,28,5,'#fff5d8');for(let j=0;j<7;j++)round(5830+j*210,235,135,65,8,'#d4c9b4');round(7390,170,300,350,22,'#c5a7d7');round(7430,205,220,260,14,'#f5dce9')}}function drawFurniture(){for(const a of props){const x=a.x;if(x<camX-350||x>camX+W/zoom+350)continue;const t=a.type;if(t===0){round(x,G-80,70,80,7,'#d5a78d');round(x+7,G-73,56,62,5,'#f5d4b7');line(x+14,G-45,x+54,G-45,'#c8a38d',3)}if(t===1){round(x,G-50,90,50,5,'#f2c4ce');round(x+8,G-55,73,10,4,'#fff2db');round(x+12,G-40,62,10,3,'#d59fb1')}if(t===2){round(x,G-63,18,63,5,'#b69d88');ellipse(x+9,G-71,37,29,'#89bda3');ellipse(x-8,G-82,26,28,'#9bcdb4');ellipse(x+25,G-87,24,30,'#80bca0')}if(t===3){round(x,G-30,95,30,5,'#d6b5db');round(x+7,G-36,80,12,5,'#ffe5e8')}if(t===4){round(x,G-52,85,52,5,'#e9d3a3');round(x+12,G-57,60,9,4,'#fff1d0')}}for(const a of platforms){if(a.x<camX-250||a.x>camX+W/zoom+250)continue;round(a.x,a.y,a.w,a.h,8,'#c29db0');round(a.x+7,a.y-6,a.w-14,11,5,'#fff1d6');round(a.x+14,a.y+15,8,35,3,'#b78f9e');round(a.x+a.w-22,a.y+15,8,35,3,'#b78f9e')}}function drawBug(x,y,phase){ellipse(x,y,17,10,'#63527f');ellipse(x-10,y-2,9,8,'#8c70a3');ellipse(x+5,y-5,5,4,'#bda6d0');for(let i=-1;i<=1;i++){line(x-9,y+4+i*3,x-20,y+12+i*4,'#554269',2);line(x+7,y+4+i*3,x+21,y+12+i*4,'#554269',2)}ellipse(x-13,y-4,2,2,'white')}function drawDog(){const x=4050+Math.sin(performance.now()*.00065)*600,y=G-75;ellipse(x,y-38,100,48,'#d4a178');ellipse(x+78,y-62,43,37,'#d6a27b');ellipse(x+95,y-88,21,33,'#a87765');ellipse(x+62,y-90,20,31,'#b78b72');ellipse(x+94,y-62,5,5,'#453c46');ellipse(x+115,y-47,13,10,'#654d4a');for(const off of [-55,-5,50])round(x+off,y-18,19,45,8,'#bb896b');line(x-98,y-40,x-132,y-72,'#b88667',15)}function drawFragiles(){for(let i=0;i<fragiles.length;i++){const a=fragiles[i];if(broken.has(i)||a.x<camX-200||a.x>camX+W/zoom+200)continue;const x=a.x;if(a.type===0){ellipse(x,G-8,27,8,'#d8b7d1');round(x-19,G-66,38,58,9,'#f7d9e3');ellipse(x,G-68,20,7,'#f8e8ee');line(x,G-70,x,G-106,'#6eaa83',4);ellipse(x-13,G-98,11,7,'#8ac49c');ellipse(x+10,G-109,11,7,'#8ac49c')}else if(a.type===1){round(x-18,G-72,36,65,6,'#b9d4df');ellipse(x,G-73,19,7,'#e3f6fa');round(x-6,G-98,12,26,5,'#f9d2a3')}else{round(x-22,G-55,44,48,8,'#eed5a9');ellipse(x,G-56,24,10,'#f7e8c6');ellipse(x,G-60,13,5,'#d9b6ab')}}}function drawPlayer(){if(!p)return;const s=sizes[p.size],x=p.x,y=ducking?G-s.h*.52:p.y;ctx.save();if(inv>0&&Math.floor(performance.now()/110)%2===0)ctx.globalAlpha=.48;ellipse(x,G-2,s.w*.62,6,'#4c466633');const skin='#b9795e',shirt=p.size==='huge'?'#8e9fe4':'#8f9fe5';round(x-s.w*.4,y+(ducking?s.h*.23:s.h*.40),s.w*.8,ducking?s.h*.16:s.h*.37,s.w*.14,shirt);round(x-s.w*.28,y+(ducking?s.h*.39:s.h*.74),s.w*.22,ducking?s.h*.13:s.h*.26,3,'#4c4b76');round(x+s.w*.06,y+(ducking?s.h*.39:s.h*.74),s.w*.22,ducking?s.h*.13:s.h*.26,3,'#4c4b76');ellipse(x,y+(ducking?s.h*.12:s.h*.25),s.w*.32,ducking?s.h*.10:s.h*.20,skin);ellipse(x,y+(ducking?s.h*.06:s.h*.14),s.w*.34,ducking?s.h*.07:s.h*.12,'#302b45');ellipse(x+s.w*.13*p.face,y+(ducking?s.h*.60:s.h*.24),Math.max(1,s.w*.038),Math.max(1,s.w*.038),'#28243e');round(x-s.w*.49,y+(ducking?s.h*.28:s.h*.44),s.w*.12,ducking?s.h*.12:s.h*.25,5,skin);round(x+s.w*.37,y+(ducking?s.h*.28:s.h*.44),s.w*.12,ducking?s.h*.12:s.h*.25,5,skin);if(p.size==='tiny'){ellipse(x,y-12,9,5,'#a5f5c7');line(x,y-7,x,y-1,'#a5f5c7',2)}ctx.restore()}function drawAntidote(){const x=WORLD-100,y=G-92;const pulse=Math.sin(performance.now()*.004);ellipse(x,y+5,48+pulse*6,58+pulse*7,'#96f1c688');round(x-20,y-28,40,65,10,'#e4fdf4');round(x-13,y-13,26,41,6,'#6ee7b7');round(x-12,y-37,24,13,4,'#d4b8a5');for(let i=0;i<6;i++)ellipse(x+Math.sin(i*2+performance.now()*.001)*40,y+Math.cos(i*3+performance.now()*.001)*50,3,3,'#fffbd5');ctx.fillStyle='#4c826d';ctx.font='bold 24px Trebuchet MS';ctx.textAlign='center';ctx.fillText('ANTIDOTE!',x,y-90)}function draw(){
+ ctx.clearRect(0,0,W,H);
+ const grad=ctx.createLinearGradient(0,0,0,H);grad.addColorStop(0,'#c7d8ed');grad.addColorStop(1,'#f8d9d6');ctx.fillStyle=grad;ctx.fillRect(0,0,W,H);
+ if(!p){return}
+ const offY=H*.71-G*zoom;
+ ctx.save();ctx.translate(-camX*zoom,offY);ctx.scale(zoom,zoom);
+ const x0=section*LEN;
+ // Keep the original illustrated rooms, resized to the active section
+ const r=ROOMS[Math.floor(section/2)];
+ for(let n=Math.max(0,section-1);n<=Math.min(SECTIONS-1,section+1);n++){
+  const rr=ROOMS[Math.floor(n/2)];ctx.save();ctx.translate(n*LEN,0);ctx.scale(LEN/(rr.end-rr.start),1);ctx.translate(-rr.start,0);drawRoom(rr);ctx.restore();
+ }
+ const savedSection=section,savedSize=sectionSize,savedHazards=sectionHazards,savedPlatforms=sectionPlatforms,savedFloor=routeFloor,savedTop=routeTop;
+ for(let n=Math.max(0,section-1);n<=Math.min(SECTIONS-1,section+1);n++){if(n===section)continue;const x=n*LEN;const cached=sectionLayouts.get(n+'-'+p.size);if(!cached)continue;ctx.save();ctx.globalAlpha=.75;for(const a of cached.platforms){round(x+a.x,a.y,a.w,a.h,7,'#bca4ce');round(x+a.x+4,a.y-5,a.w-8,9,4,'#fff1d6')}for(const h of cached.hazards){if(h.type==='lamp'){line(x+h.x,0,x+h.x,G-170,'#957e88',5);ellipse(x+h.x,G-173,43,20,'#efcf83')}else if(h.type==='fragile')round(x+h.x-21,G-83,42,74,9,'#f5d9e6');else if(h.type==='gap')round(x+h.x-h.w/2,G-9,h.w,12,5,'#685778');else drawBug(x+h.x,G-14,0)}ctx.restore();}
+ // Parallax / layered decorations preserved from Reimagined, with extra detail
+ for(let i=0;i<8;i++){
+  let x=x0+70+i*145;
+  ellipse(x,G-6,65,9,'#765b7350');
+  if(i%3===0){round(x-16,G-88,32,82,6,'#bba2b7');ellipse(x,G-95,45,24,'#a7d1bc')}
+  else if(i%3===1){round(x-27,G-47,54,46,5,'#eac9ad');round(x-20,G-41,40,30,3,'#fff0d7')}
+ }
+ if(sectionSize==='tiny'){
+  // A physical roof over the miniature route, with visible crawl tunnel
+  round(x0+20,G-118,LEN-40,18,8,'#957e9d');round(x0+20,G-103,LEN-40,13,5,'#f8e1b9');
+  for(let i=0;i<9;i++){const x=x0+50+i*115;line(x,G-7,x-9,G-46,'#8caf7e',3);line(x+6,G-7,x+11,G-34,'#9dc38a',2)}
+  for(const a of sectionPlatforms){round(x0+a.x,a.y,a.w,a.h,5,'#bca4ce');round(x0+a.x+4,a.y-4,a.w-8,6,3,'#f3e2d4')}
+  for(let i=0;i<sectionHazards.length;i++){
+   const h=sectionHazards[i],xx=x0+h.x+(h.type==='paw'?Math.sin(performance.now()*.005+i)*32:Math.sin(performance.now()*.003+i)*18);
+   if(h.type==='paw'){
+    round(xx-24,G-140,48,123,18,'#c9916e');ellipse(xx,G-21,35,22,'#d5a17e');
+    for(let k=-1;k<=1;k++)ellipse(xx+k*16,G-27,8,7,'#b77c64');
+   }else if(h.type==='spider'){
+    ellipse(xx,G-17,15,13,'#5d4a73');for(let k=-1;k<=1;k++){line(xx-8,G-15,xx-25,G-23+k*8,'#534065',2);line(xx+8,G-15,xx+25,G-23+k*8,'#534065',2)}ellipse(xx-5,G-20,3,3,'#fff');
+   }else drawBug(xx,G-14,0);
+  }
+  ctx.font='bold 17px Trebuchet MS';ctx.fillStyle='#5b4872';ctx.fillText('FLOOR TUNNEL  →',x0+42,G-145);
+ }else if(sectionSize==='normal'){
+  for(const a of sectionPlatforms){
+   round(x0+a.x,a.y,a.w,a.h,8,'#b893b2');round(x0+a.x+6,a.y-7,a.w-12,12,5,'#fff1d6');
+   round(x0+a.x+12,a.y+14,9,G-a.y-14,4,'#c5a2a7');round(x0+a.x+a.w-21,a.y+14,9,G-a.y-14,4,'#c5a2a7');
+  }
+  for(const h of sectionHazards)round(x0+h.x-h.w/2,G-9,h.w,12,5,'#685778');
+  ctx.font='bold 17px Trebuchet MS';ctx.fillStyle='#5b4872';ctx.fillText('JUMP THE FURNITURE  →',x0+42,G-230);
+ }else{
+  for(let i=0;i<sectionHazards.length;i++){
+   const h=sectionHazards[i],xx=x0+h.x;
+   if(h.type==='lamp'){
+    line(xx,0,xx,G-170,'#957e88',5);ellipse(xx,G-173,43,20,'#efcf83');ellipse(xx,G-160,29,8,'#fff4c2');
+    ctx.fillStyle='#c24e63';ctx.font='bold 18px Trebuchet MS';ctx.fillText('DUCK!',xx-27,G-217);
+   }else if(!broken.has(section+'-'+i)){
+    round(xx-21,G-83,42,74,9,'#f5d9e6');ellipse(xx,G-84,22,8,'#fff5f9');
+    line(xx,G-85,xx,G-119,'#75ad84',4);ellipse(xx-12,G-111,13,8,'#8bc89d');
+   }
+  }
+  ctx.font='bold 17px Trebuchet MS';ctx.fillStyle='#5b4872';ctx.fillText('WATCH THE GLASS · DUCK UNDER LIGHTS  →',x0+42,G-245);
+ }
+ // visible exits, route gates, and section labels
+ round(x0+LEN-12,G-100,9,100,4,'#a8d9c299');
+ ctx.fillStyle='#2b7867';ctx.font='bold 15px Trebuchet MS';ctx.fillText('→',x0+LEN-38,G-142);
+ ctx.fillStyle='#604c6e';ctx.font='bold 20px Trebuchet MS';ctx.fillText(labels[section],x0+45,55);
+ if(section===SECTIONS-1){
+  const xx=x0+LEN-70;ellipse(xx,G-140,48,55,'#91e9bd88');round(xx-16,G-166,32,58,8,'#dffff0');round(xx-11,G-152,22,40,6,'#64dba6');round(xx-10,G-175,20,11,3,'#d8b9a1');
+  ctx.fillStyle='#357a61';ctx.font='bold 20px Trebuchet MS';ctx.fillText('ANTIDOTE',xx-48,G-195);
+ }
+ if(dogPass){const dx=dogPass.x;ellipse(dx,G-85,118,54,'#d4a178');ellipse(dx-65,G-124,44,39,'#d4a178');ellipse(dx-84,G-146,21,30,'#a87765');ellipse(dx-78,G-126,5,5,'#433943');for(const off of [-72,-18,35,80]){round(dx+off,G-44,26,45,10,'#bd896b');ellipse(dx+off+13,G-6,21,10,'#d4a178')}}
+ if(dogPass&&dogWarning>0){ctx.fillStyle='#b35257';ctx.font='bold 21px Trebuchet MS';ctx.fillText('🐕 DOG COMING — FIND COVER!',p.x-120,G-265)}
+ if(p.size==='tiny'&&sectionPlatforms.some(a=>Math.abs(localX-(a.x+a.w/2))<a.w/2+12)){ctx.fillStyle='#4d8b6b';ctx.font='bold 17px Trebuchet MS';ctx.fillText('↓ HOLD S TO HIDE',p.x-60,G-110)}
+ drawPlayer();for(const q of particles)ellipse(q.x,q.y,q.r,q.r,q.color);
+ ctx.restore();
+ round(20,H-22,W-40,8,4,'#ffffff99');round(20,H-22,(W-40)*((section+localX/LEN)/SECTIONS),8,4,'#e782a5');
+ if(cinematic){const c=cinematic;const alpha=c.phase==='warning'?.10+.07*Math.sin(c.elapsed*23):c.phase==='change'?.20:.05;ctx.fillStyle=`rgba(195,175,255,${alpha})`;ctx.fillRect(0,0,W,H)}
+ if(trans>0){ctx.fillStyle=`rgba(255,249,237,${Math.min(.16,trans*.14)})`;ctx.fillRect(0,0,W,H)}
+ if(flash>0){ctx.fillStyle=`rgba(255,250,245,${flash*.23})`;ctx.fillRect(0,0,W,H)}
+}
+function frame(now){const dt=last?(now-last)/1000:0;last=now;try{update(dt);draw()}catch(err){console.error(err);document.getElementById('banner').textContent='Game error: '+err.message;document.getElementById('banner').style.opacity='1';}requestAnimationFrame(frame)}requestAnimationFrame(frame);})();</script></body></html>
